@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title></title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="css/style.css" rel="stylesheet">
+    </head>
+    <body>
+      <canvas id="c"></canvas>
+      <input type="button" name="" value="calc Coeffs" id="get_coeffs">
+      <input type="button" name="" value="add coeffs" id="add_coeff">
+      
+      <span id="canvas_coords"></span>
+            <span id="abs_coords"></span>
+            <span id="canvas_coords_calc"></span>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+          let c =document.getElementById('c');
+          let ctx = c.getContext('2d');
+          c.style.width =  $(window).width() + "px";
+          c.style.height =  $(window).height() - 50 + "px";
+          c.width = $(window).width();
+          c.height = $(window).height() - 50;
+          let canvasWidth = c.width;
+          let canvasHeight = c.height;
+          let absHeight = 5;
+          let absWidth = Math.PI;
+          c.addEventListener('mousemove', (e) => {
+            document.getElementById('canvas_coords').innerHTML = "x: " + e.clientX + " y: " + e.clientY;
+            let absx = canvasPosToAbsolute(e.clientX, e.clientY).x;
+            let absY = canvasPosToAbsolute(e.clientX, e.clientY).y;
+            document.getElementById('abs_coords').innerHTML = 
+            "x: " + absx + " y: " + absY;
+              document.getElementById('canvas_coords_calc').innerHTML = 
+            "x: " + absPosToCanvas(absx, absY).x + " y: " + absPosToCanvas(absx, absY).y;
+          })
+          function canvasPosToAbsolute(x,y) {
+              return {
+                x : (x - canvasWidth / 2) * ((absWidth * 2) / canvasWidth),
+                y : -(y - canvasHeight / 2) * ((absHeight * 2) / canvasHeight)
+              }
+          }
+
+          function absPosToCanvas(x,y) {
+            return {
+              x : (x * canvasWidth / (absWidth * 2)) + canvasWidth / 2,
+              y : -y * (canvasHeight /(absHeight * 2)) + canvasHeight / 2
+            }
+          }
+
+          function plotFunction(f, col) {
+            console.log('plotting')
+            for(let i = 0; i <= canvasWidth; ++i) {
+              let absx =canvasPosToAbsolute(i, 0).x;
+              let absY = f(absx);
+              let canvasY =absPosToCanvas(0, absY).y;
+              ctx.fillRect(i,canvasY,1,1);
+            }
+          }
+          currentXs = [];
+          currentYs = [];
+
+          function addPoint(x,y) {
+            let i = 0;
+              for(; currentXs[i] < x; ++i) {                
+              }
+              if(currentXs[i] == x) {
+                  currentYs[i] = y;
+                  return;
+                } else {
+                  currentXs.splice(i, 0, x);
+                  currentYs.splice(i, 0, y);
+                  return;
+                }
+            }  
+
+          function getLinearInterpolVar(x) {
+            let i = 0;
+              for(; currentXs[i] < x; ++i) {                
+              }
+              if(currentXs[i] == x) {
+                  return currentYs[i];
+                } else {
+                  let m = (currentYs[i] - currentYs[i - 1]) / (currentXs[i] - currentXs[i - 1]);
+                  let distToLast = x - currentXs[i - 1];
+                  let y = currentYs[i - 1] + distToLast * m;
+                  return y;
+                }
+            };
+
+          currentXs.push(-Math.PI );
+          currentXs.push(Math.PI);
+          currentYs.push(3);
+          currentYs.push(3);
+          plotFunction(getLinearInterpolVar);
+
+          c.addEventListener('click', e => {
+            addPoint(canvasPosToAbsolute(e.clientX, e.clientY).x, canvasPosToAbsolute(e.clientX, e.clientY).y);
+            console.log(currentXs);
+            ctx.clearRect(0,0,canvasWidth, canvasHeight);
+            plotFunction(getLinearInterpolVar);
+          })
+
+          let currentAs = [];
+          let currentBs = [];
+                    let amtAddedCoeffs = 0;
+
+
+          document.getElementById('get_coeffs').addEventListener('click', e => {
+            getCoeffs(0, 100, currentXs, currentYs, data => {
+              currentAs = data.ais;
+              currentBs = data.bis;
+              amtAddedCoeffs = 0;
+              console.log(currentAs);
+              console.log(currentBs);
+            })
+          });
+
+
+          document.getElementById('add_coeff').addEventListener('click', e => {
+            console.log('add coeff')
+            ctx.clearRect(0,0,canvasWidth, canvasHeight);
+            plotFunction(getLinearInterpolVar);
+            let currentTrigFunc = (x) => {
+              let sum = currentAs[0];
+              for(let i = 1; i <amtAddedCoeffs; ++i) {
+                let ithTrig = x => {return Math.cos(i * x) * currentAs[i] + Math.sin(i * x) * currentBs[i]}
+                sum += ithTrig(x);
+              }
+              return sum;
+            }
+            for(let i = 1; i <amtAddedCoeffs + 1; ++i) {
+                let ithTrig = x => {return Math.cos(i * x) * currentAs[i] + Math.sin(i * x) * currentBs[i]}
+                plotFunction(x => {return ithTrig(x) - (5 - i * .05);});
+            }
+            amtAddedCoeffs++;
+            plotFunction(currentTrigFunc);
+          })
+
+
+            function getCoeffs(offset, amt, pointsX, pointsY, callback) {
+              let response;
+                $.ajax({
+                  type : 'post',  
+                  url: "http://localhost:8080/trigCoeffs",            
+                  data: JSON.stringify({
+                    "pointsX" : pointsX,
+                    "pointsY" : pointsY,
+                    "amt" : amt,
+                    "offset" : offset, 
+                    "amtPoints" :currentXs.length
+                    }),
+                  contentType: "application/json; charset=utf-8",
+                  dataType: "json",
+                  success : (data) => {callback(data);},
+                  failure : (error) => {console.log('error: ' + error);}
+                });
+            }
+            
+        </script>
+    </body>
+</html>
